@@ -6,68 +6,61 @@ use 5.018;
 use utf8;
 use open qw( :encoding(UTF-8) :std );
 use FindBin qw($RealBin);
+if (-e "$RealBin/../dist.ini") {
+    use lib "$RealBin/../lib";
+}
 use WWW::Telegram::BotAPI;
 use Data::Dumper;
 use Term::ANSIColor;
 use JSON::PP;
 use Getopt::Long;
-
-our %emoji = (
-    'bot'      => '🤖',
-    'temp'     => '🌡',
-    'clock'    => '🕙',
-    'fire'     => '🔥',
-    'loop'     => '🔄',
-    'ok'       => "✅",     # green heavy check mark
-    'no'       => "🚫",     #  U+1F6AB NO ENTRY SIGN
-    'redcross' => "❌",     #  U+274C CROSS MARK
-    'warning'  => '⚠️',
-    'bug'      => "🐞",     #  U+1F41E LADY BEETL
-    'soon'     => "🔜",     #  Soon right arrow
-    'turtle'   => "🐢",     #  U+1F422 TURTLE
-    'alarm'    => "⏰",     #  alarm clock
-    'smile'    => "😃",     #  smile
-    'cool'     => '😎',
-    'sleep'    => '😴',
-
-);
-
+use FR24::Bot;
 our $conf;
 
 my $opt_verbose;
 my $opt_debug;
 my $opt_token;
-my $test_logo_path;
-my $pic_id;
-my $controller = 'echo';
+my $opt_ip;
+my $opt_config = "$ENV{HOME}/.config/fr24-bot.ini";
 GetOptions(
- 't|token=s' => \$opt_token,
- 'l|logo=s'  => \$test_logo_path, # for testing only
+ 'a|api-key=s' => \$opt_token,
+ 'i|ip=s'      => \$opt_ip,
+ 'c|config=s'  => \$opt_config,
  'verbose'   => \$opt_verbose,
- 'debug'     => \$opt_debug
+ 'debug'     => \$opt_debug,
+ 'version'   => sub { say basename($0). " " . $FR24::Bot::VERSION; exit 0;},
 );
 
 $opt_verbose = 1 if $opt_debug;
 
-# get Telegram API token
-unless ( defined $opt_token ) {
-    if ( -e "$ENV{HOME}/.config/fr24bot.conf" ) {
-    	say STDERR "Reading config from ~/.config/fr24bot.conf" if ($opt_verbose);
-        $conf = readConfigFromFile("$ENV{HOME}/.config/fr24bot.conf");
-    }
-    elsif ( -e "$RealBin/.config/fr24bot.conf" ) {
-        say STDERR "Reading config from $RealBin/.config/fr24bot.conf" if ($opt_verbose);
-        $conf = readConfigFromFile("$RealBin/.config/fr24bot.conf");
-    }
-    else {
-        die "APIKey file not found. Can be in:\n - $ENV{HOME}/.config/fr24bot.conf\n - $RealBin/.config/fr24bot.conf\n - --token TOKEN\n";
-    }
-    if ( defined $conf->{token}) {
-        say STDERR "Using token from config file" if ($opt_verbose);
-        $opt_token = $conf->{token};
-    }
+# Load config
+if ( defined $opt_config and -e $opt_config ) {
+    say STDERR "Reading config from $opt_config" if ($opt_verbose);
+    $conf = FR24::Bot::loadconfig($opt_config);
+
+} elsif ( -e "$ENV{HOME}/.config/fr24-bot.ini" ) {
+  	say STDERR "Reading config from ~/.config/fr24-bot.ini" if ($opt_verbose);
+    $conf = FR24::Bot::loadconfig("$ENV{HOME}/.config/fr24-bot.ini");
+} elsif ( -e "$RealBin/.config/fr24-bot.ini" ) {
+    say STDERR "Reading config from $RealBin/.config/fr24-bot.ini" if ($opt_verbose);
+    $conf = FR24::Bot::loadconfig("$RealBin/.config/fr24-bot.ini");
+}
+ 
+
+# If API KEY is provided in the command line, use it
+if ( defined $opt_token and $opt_token ne 'default' ) {
+    say STDERR "Using token from command line" if ($opt_verbose);
+    $conf->{telegram}->{apikey} = $opt_token;
+} elsif ( defined $conf->{telegram}->{apikey}) {
+    say STDERR "Using token from config file" if ($opt_verbose);
+    $opt_token = $conf->{telegram}->{apikey};
+} else {
+    say STDERR Dumper $conf if ($opt_verbose);
+    die "APIKey file not found. Can be in:\n - $ENV{HOME}/.config/fr24-bot.ini\n - $RealBin/.config/fr24-bot.ini\n - --token TOKEN\n";
 }
 
+
+die "ERROR: No API key provided\n" unless defined $opt_token;
 my $api = WWW::Telegram::BotAPI->new( token => $opt_token );
 
 # Bump up the timeout when Mojo::UserAgent is used (LWP::UserAgent uses 180s by default)
@@ -81,7 +74,7 @@ my $commands = {
     # Example demonstrating the use of parameters in a command.
     "say" => sub {
         if ( defined $_[1] ) {
-            push( @_, $emoji{'smile'} );
+            
             join " ", splice @_, 1;
         }
         else {
@@ -104,7 +97,7 @@ my $commands = {
         
         my $message = "Hello "
           . shift->{from}{username}
-          . ",\n I am $emoji{bot} *FR24 Bot* [\@$u], your lab technician! How are you?";
+          . ",\n I am *FR24 Bot* [\@$u], your lab technician! How are you?";
 
         +{
             method     => "sendMessage",
@@ -117,20 +110,20 @@ my $commands = {
         my $s = getStatus();
 
         #sprintf "The device is ready.\n $emoji{temp} %s degrees.\nStay warm %s!", sprintf("%.1f", $s->{status}->{temperature}), shift->{from}{username};
-        print "The device is ready.\n $emoji{temp} %s degrees.\nStay warm %s!",
+        print "The device is ready.\n %s degrees.\nStay warm %s!",
           sprintf( "%.1f", $s->{status}->{temp} ),
           shift->{from}{username};
     },
 
     "status" => sub {
         my $s     = getStatus();
-        my $relay = "$emoji{sleep} not active";
+        my $relay = " not active";
 
-        $relay = "$emoji{loop} heater is active now"
+        $relay = "heater is active now"
           if ( $s->{status}->{heater_active} eq 'ON' );
 
         my $output =
-          sprintf "$emoji{temp} *%s°C* \n*Load*: %s%%\n",
+          sprintf " *%s°C* \n*Load*: %s%%\n",
           sprintf( "%.1f", $s->{status}->{temp} ),
           sprintf( "%.1f", $s->{status}->{load} );
 
@@ -142,176 +135,6 @@ my $commands = {
         };
     },
 
-    "start" => sub {
-        print STDERR "[START] Status:\n" if ($opt_debug);
-        my $s = getStatus();
-        print STDERR Dumper $s if ($opt_debug);
-        my $output = '';
-        if ( $s->{status}->{heating_cycle} eq 'ON' ) {
-            $output .= "$emoji{warning} Device is _already_ heating. Check with /status\n";
-        }
-        else {
-            if ( ioh_start() ) {
-                $output .=  "$emoji{fire} *Heating started* at "
-                  . sprintf( "%.2f", $s->{status}->{temperature} )
-                  . "°C. Check with /status";
-            }
-            else {
-                $output .= "$emoji{redcross} *ERROR!* I wasn't able to start the heating cycle, and I'm so embarassed about this now. Check with /status";
-            }
-
-        }
-
-
-        if ( defined $_[1] ) {
-            shift @_;
-            $output .= "\n\n$emoji{warning} No parameters were expected: @_ ignored";
-        }
-        +{
-            method     => "sendMessage",
-            parse_mode => "Markdown",
-            text       => $output,
-        };
-    },
-
-    "schedule" => sub {
-        print STDERR "[schedule] Status:\n" if ($opt_debug);
-        my $s = getStatus();
-        print STDERR Dumper $s if ($opt_debug);
-        shift(@_);
-         
-        my $output = "$emoji{warning} Tell me when like:\n • now + 2 minutes\n • now + 10 hours\n • 10am tomorrow";
-        if ( defined $_[0] ) {
-            my $time = join " ", @_;
-            $output = ioh_schedule($time);
-        }
-
-        +{
-            method     => "sendMessage",
-            parse_mode => "Markdown",
-            text       => $output,
-        };
-    },
-
-    "queue" => sub {
-        my $s = getStatus();
-        print STDERR Dumper $s if ($opt_debug);
-        my ( $output, $count ) = ioh_queue();
-
-        if ( defined $_[1] ) {
-            shift @_;
-            $output .= "\n\n$emoji{warning} No parameters were expected: @_ ignored";
-        }
-
-        +{
-            method     => "sendMessage",
-            parse_mode => "Markdown",
-            text       => "$emoji{clock} $output",
-        };
-    },
-    "delete" => sub {
-        shift(@_);
-        my $output = ioh_queue_delete($_[0]);
-
-        +{
-            method     => "sendMessage",
-            parse_mode => "Markdown",
-            text       => "$output",
-        };
-    },
-    "stop" => sub {
-        my $s      = getStatus();
-        my $output = '';
-        if (    $s->{status}->{heating_cycle} eq 'OFF'
-            and $s->{status}->{heater_active} eq 'OFF' )
-        {
-            $output .= "$emoji{warning} Heater and heating cycle are _already_ off. Check with /status\n";
-        }
-        else {
-            if ( ioh_stop() ) {
-                $output .= "$emoji{ok} *Heating stopped* at "
-                  . sprintf( "%.2f", $s->{status}->{temperature} )
-                  . "°C. Check with /status";
-            }
-            else {
-                $output .= "$emoji{warning} *ERROR!* I wasn't able to stop the heating cycle, and I'm so embarassed about this now. Check with /status";
-            }
-        }
-
-        if ( defined $_[1] ) {
-            shift @_;
-            $output .= "\n\n$emoji{warning} No parameters were expected: @_ ignored";
-        }
-        +{
-            method     => "sendMessage",
-            parse_mode => "Markdown",
-            text       => $output,
-        };
-    },
-
-    # Example displaying a keyboard with some simple options.
-    "keyboard" => sub {
-        +{
-            text         => "$emoji{smile} Here's your control panel!",
-            reply_markup => {
-                keyboard => [
-                    [ "/status", "/temp" ],
-                    [ "/start",  "/stop" ],
-                    [ "/queue",  "/schedule" ]
-                ],
-                one_time_keyboard =>
-                  \1    # \1 maps to "true" when being JSON-ified
-            }
-        };
-    },
-
-    # Let me identify yourself by sending your phone number to me.
-    "phone" => sub {
-        +{
-            text => "$emoji{warning} This is a test\nWould you allow me to get your phone number please?",
-            reply_markup => {
-                keyboard => [
-                    [
-                        {
-                            text            => "Sure!",
-                            request_contact => \1
-                        },
-                        "No, go away!"
-                    ]
-                ],
-                one_time_keyboard => \1
-            }
-        };
-    },
-
-    # Test UTF-8
-    "encoding" => sub {
-        "$emoji{smile} Hello test! Привет! こんにちは! Buondì!";
-    },
-
-    "logo" => sub {
-        return 'Meh...' if ( not -e "$test_logo_path" );
-        +{
-            method => "sendPhoto",
-            photo  => {
-                file => $test_logo_path
-            },
-            caption => "Here it is!"
-          }
-
-    },
-
-
-
-    # Example sending a photo with a known picture ID.
-    "lastphoto" => sub {
-        return "You didn't send any picture!" unless $pic_id;
-        +{
-            method  => "sendPhoto",
-            photo   => $pic_id,
-            caption => "Here it is!"
-        };
-    },
     "_unknown" => "Unknown command :( Try /help"
 };
 
@@ -322,9 +145,6 @@ $commands->{help} =
 
 # Special message type handling
 my $message_types = {
-
-    # Save the picture ID to use it in `lastphoto`.
-    "photo" => sub { $pic_id = shift->{photo}[0]{file_id} },
 
     # Receive contacts!
     "contact" => sub {
@@ -343,7 +163,7 @@ my $message_types = {
     }
 };
 
-verbose("Hello! I am $emoji{bot} ". $me->{result}{username} . ". Starting..." );
+verbose("Hello! I am ". $me->{result}{username} . ". Starting..." );
 deb("Debug=$opt_debug;Verbose=$opt_verbose;");
 my $clock_tick = 0;
 
@@ -431,19 +251,7 @@ while (1) {
         }
     }
 }
-
-sub readConfigFromFile {
-    my ($filename) = @_;
-    my $conf;
-    open my $I, '<',
-      "$filename" || die " FATAL ERROR:\n Unable to open <$filename>\n";
-    while ( my $l = readline($I) ) {
-        if ( $l =~ /^(\w+)\s*=\s*(.*)$/ ) {
-            $conf->{$1} = $2;
-        }
-    }
-    return $conf;
-}
+ 
 
 sub checkProcess {
 
@@ -457,106 +265,7 @@ sub checkProcess {
     }
     return 0;
 }
-
-sub ioh_queue_delete {
-     my $id = shift @_;
-     if ($id < 1) {
-        return "$emoji{warning} Specify a schedule ID (use /queue to get IDs)";
-     }
-     if (queue_clear($id)) {
-        return "$emoji{ok} Task *$id* has been deleted (check with /queue)";
-     } else {
-        return "$emoji{warning} Some problems trying to delete task *$id* (check with /queue)";
-     }
-}
-sub queue_clear {
-    my $id = shift @_;
-    return 0 unless $id;
-    my $cmd = `atrm $id`;
-    if ($?) {
-        return 0;
-    } else {
-        return 1;
-    }
-
-}
-sub ioh_queue {
-    my $cmd = qq(atq);
-    my $out = '';
-    my @out = `$cmd`;
-    my $c   = 0;
-    foreach my $l (@out) {
-        chomp($l);
-        $c++;
-        $l =~s/^(\d{1,3})\s*(\w{3})\s+(\w{3}\s+\d{1,2})/*#\1* • \2 _\3_/;
-        $l =~s/(\d{2}:\d{2}):\d{2}/\1/;
-        $out .= "$l\n";
-    }
-    $out = "_$c requests scheduled_\n" . $out;
-    print STDERR "ioh_queue(): c=$c\n";
-    print STDERR "ioh_queue(): m=$c\n";
-    return ( $out, $c );
-}
-
-sub ioh_schedule {
-    my $when    = shift(@_);
-    my $message = '';
-    $when = 'now' if ( !$when );
-    my $cmd = qq(echo '$controller -j -a start 2>/dev/null' | at $when 2>&1);
-    print STDERR "ioh_schedule(): $cmd\n";
-
-    
-    my $schedule = `$cmd`;
-
-    my ( $queue, $total ) = ioh_queue();
-
-    if ($?) {
-        $message .= "$emoji{no} _bad time format_\n";
-    }
-    else {
-        $message .= "$emoji{ok} Your request was queued.\nThere are *$total* requests (see /queue) ";
-    }
-}
-
-sub ioh_start {
-
-    if ( checkProcess() ) {
-        deb("\tioh_start(): process already found!");
-        return 0;
-    }
-
-    system("$controller -j -a start 2>/dev/null &");
-    deb("\tioh_start(): heater started!\n") if ($opt_debug);
-    if ( checkProcess() ) {
-        deb("\tioh_start(): heater started: SUCCESS (process found)!");
-        return 1;
-    }
-    else {
-        deb_warn(
-            "\tioh_start(): heater started: PROBLEM HERE (process NOT found)!");
-        return 1;
-    }
-}
-
-sub ioh_stop {
-
-    my $cmd       = qq($controller -j -a off 2>/dev/null);
-    my $data      = `$cmd`;
-    my $off_error = $?;
-    sleep 1;
-    if ($off_error) {
-        deb_warn("[ioh_stop] \`$cmd\` returned $off_error");
-        return 0;
-    }
-    elsif ( !-e "$ENV{HOME}/.FR24.lock" ) {
-        return 1;
-    }
-    else {
-        deb_warn("[ioh_stop] lock file found (?)");
-        return 1;
-    }
-
-}
+ 
 
 sub lockfile_age {
     my $file = "$ENV{HOME}/.FR24.lock";
@@ -643,7 +352,7 @@ sub deb {
 
 sub deb_warn {
     return undef if ( not defined $opt_debug );
-    print STDERR $emoji{warning}, '   ', color('yellow'), $_[0], color('reset'), "\n";
+    print STDERR  color('yellow'), $_[0], color('reset'), "\n";
 
 }
 __END__

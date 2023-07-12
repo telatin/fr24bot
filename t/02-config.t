@@ -15,10 +15,11 @@ ok($conf->{"telegram"}->{"apikey"} eq $conf_api, "API key is correct: $conf_api"
 ok($conf->{"server"}->{"ip"}, "IP is set");
 ok($conf->{"server"}->{"ip"} eq $conf_ip, "IP is correct: $conf_ip");
 
-my $valid_sections = ["telegram", "server"];
+my $valid_sections = ["telegram", "server", "users"];
 my $valid_keys = {
     "telegram" => ["apikey"],
     "server" => ["ip"],
+    "users" => ["everyone"]
 };
 for my $key (sort keys %{$conf}) {
     my $test = grep {$_ eq $key} @{$valid_sections};

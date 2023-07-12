@@ -6,9 +6,10 @@ package FR24::Bot;
 our $VERSION = "0.0.1";
 use JSON::PP;
 use Exporter qw(import);
+use HTTP::Tiny;
 # Export version
 our @EXPORT = qw($VERSION);
-our @EXPORT_OK = qw(loadconfig saveconfig url_exists parse_flights);
+our @EXPORT_OK = qw(loadconfig saveconfig url_exists authorized parse_flights systeminfo);
 
 sub parse_flights {
     my ($json_text, $test) = @_;
@@ -65,9 +66,12 @@ sub loadconfig {
     my $config = {
         'server' => { 
             'ip' => 'localhost',
-        }
+        },
+        'users' => {
+            'everyone' => 1,
+        },
     };
-    $config = {};
+
     my $section = "default";
     while (my $line = readline($fh)) {
         chomp $line;
@@ -88,6 +92,28 @@ sub loadconfig {
     return $config;
 }
 
+sub authorized {
+    my ($config, $user) = @_;
+    my $authorized = 0;
+    return $authorized if !defined $user;
+    return $authorized if $user !~ /^[0-9]+$/;
+    # If there is no "users" section, everyone is authorized
+    if (!defined $config->{'users'}) {
+        print STDERR "[WARNING] Bad configuration file: no 'users' section\n";
+        return 1;
+    }
+    if (defined $config->{'users'}->{'everyone'}) {
+        $authorized = 1;
+    }
+    if (defined $config->{'users'}->{$user}  and $config->{'users'}->{$user} == 1 ) {
+        $authorized = 1;
+    }
+    # Banned?
+    if (defined $config->{'users'}->{$user}  and $config->{'users'}->{$user} == 0 ) {
+        $authorized = 0;
+    }
+    return $authorized;
+}
 sub saveconfig {
     my ($filename, $config) = @_;
     open my $fh, '>', $filename or Carp::croak "Can't open $filename: $!";
@@ -118,32 +144,191 @@ sub url_exists {
         return 1;
     } elsif ($response->{status} == 599) {
         # Try anothe method: SSLeay 1.49 or higher required
-        
+        my $response = undef;
         eval {
             require LWP::UserAgent;
             my $ua = LWP::UserAgent->new;
             $ua->ssl_opts(verify_hostname => 0);  # Disable SSL verification (optional)
-            my $response = $ua->get($url);
+            $response = $ua->get($url);
+             
+
             
-            if ($response->is_success) {
-                return 1;
-            } else {
-                return 0;
-            }
         };
-        if ($@) {
-            my $cmd = qq(curl --silent -L -I $url);
-            my @output = `$cmd`;
-            for my $line (@output) {
-                chomp $line;
-                if ($line =~ /^HTTP/ and $line =~ /200/) {
-                    return 1;
-                }
+        if ($response->is_success) {
+                return 1;
+        } 
+        
+            
+        my $cmd = qq(curl --silent -L -I "$url");
+        my @output = `$cmd`;
+        for my $line (@output) {
+            chomp $line;
+            if ($line =~ /^HTTP/ and $line =~ /200/) {
+                return 1;
             }
         }
+        return 0;
 
     } else {
         return 0;
     }
+    
+}
+
+sub curl {
+    my $url = shift;
+    my $cmd = qq(curl --silent -L "$url");
+    my @output = `$cmd`;
+    if ($? != 0) {
+        return undef;
+    }
+    return join("\n", @output);
+}
+sub systeminfo {
+    my ($config) = @_;
+    return {} if !defined $config->{'server'}->{'port'};
+    return {} if !defined $config->{'server'}->{'ip'};
+
+    my $url = $config->{'server'}->{'ip'} . ':' . $config->{'server'}->{'port'} . '/monitor.json';
+    my $json_text = curl($url);
+    if (!defined $json_text) {
+        return {};
+    }
+    my $json_data;
+    eval {
+     my $json = JSON::PP->new->allow_nonref;
+     $json_data = $json->decode($json_text);
+    };
+    if ($@) {
+        return {};
+    }
+    return $json_data;
+
 }
 1;
+
+__END__
+ 
+=head1 SYNOPSIS
+
+    use FR24::Bot;
+
+
+    my $result = FR24::Bot::parse_flights($json_text);
+
+    # Load configuration from a file
+    my $config = FR24::Bot::loadconfig("/path/to/config.ini");
+
+    # Save configuration to a file
+    FR24::Bot::saveconfig("/path/to/config.ini", $config);
+
+    # Parse flights from JSON data
+    my $json_text = '{"4067ef":["4067ef",0,0,0,37000,0,"0000",0,"","",1689143713,"","","",false,0,""]}';
+
+=head1 DESCRIPTION
+
+FR24::Bot provides subroutines for FR24-Bot.
+
+=head1 SUBROUTINES
+
+=head2 parse_flights
+
+    my $result = parse_flights($json_text, $test_bool);
+
+Parses flights from JSON data and returns the result as a hash reference.
+
+Parameters:
+
+=over 4
+
+=item * C<$json_text> - The JSON data containing flight information.
+
+=back
+
+Returns:
+
+A hash reference with the following keys:
+
+=over 4
+
+=item * C<status> - The status of the parsing operation.
+
+=item * C<total> - The total number of flights parsed.
+
+=item * C<data> - A hash reference containing flight information.
+
+=item * C<raw> - A hash reference containing the raw flight data.
+
+=back
+
+=head2 loadconfig
+
+    my $config = loadconfig($filename);
+
+Loads configuration from a file and returns the configuration as a hash reference.
+
+Parameters:
+
+=over 4
+
+=item * C<$filename> - The name of the configuration file.
+
+=back
+
+Returns:
+
+A hash reference representing the loaded configuration.
+
+=head2 saveconfig
+
+    saveconfig($filename, $config);
+
+Saves configuration to a file.
+
+Parameters:
+
+=over 4
+
+=item * C<$filename> - The name of the configuration file.
+
+=item * C<$config> - The configuration to be saved (a hash reference).
+
+=back
+
+=head2 url_exists
+
+    my $exists = url_exists($url);
+
+Checks if a URL exists by sending a HEAD request.
+
+Parameters:
+
+=over 4
+
+=item * C<$url> - The URL to check.
+
+=back
+
+Returns:
+
+C<1> if the URL exists, C<0> otherwise.
+
+=head1 EXPORTS
+
+The following variables are exported by default:
+
+=over 4
+
+=item * C<$VERSION> - The version of the FR24::Bot module.
+
+=back
+
+The following variables can be optionally exported:
+
+=over 4
+
+=item * C<@EXPORT_OK> - An array of additional variables that can be exported.
+
+=back
+
+ 

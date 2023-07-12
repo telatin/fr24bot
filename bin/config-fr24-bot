@@ -21,11 +21,17 @@ my $config_file = "$ENV{HOME}/.config/fr24-bot.ini";
 my $verbose = 0;
 my $opt_api_key;
 my $opt_IP;
+my $opt_port = 8754;
 my $opt_no_write = 0;
+my @opt_users;
+my @opt_banned_users;
 if (not GetOptions(
     'a|api-key=s'  => \$opt_api_key,    
     'i|ip=s'       => \$opt_IP,
+    'p|port=i'     => \$opt_port,
     'c|config=s'   => \$config_file,
+    'u|users=s'    => \@opt_users,
+    'b|ban=s'      => \@opt_banned_users,
     'no-write'     => \$opt_no_write,
     'verbose'      => \$verbose,
     'version'      => sub { say basename($0). " " . $VERSION; exit 0;},
@@ -46,10 +52,11 @@ if ($verbose) {
 }
 
 
+## ===== API KEY =====
 my $NEW_API_KEY = undef;
 if (not defined $opt_api_key) {
-    say STDERR GREEN, "> API KEY", RESET;
-    $NEW_API_KEY = getInfoFromUser("Provide API key for Telegram", $config->{"telegram"}->{"apikey"});
+    say STDERR GREEN, "> API KEY ", RESET, $config->{"telegram"}->{"apikey"} if defined $config->{"telegram"}->{"apikey"};
+    $NEW_API_KEY = getInfoFromUser("Provide API key for Telegram", $config->{"telegram"}->{"apikey"}) if not defined $config->{"telegram"}->{"apikey"};
 } else {
 
     if ($opt_api_key eq 'default') {
@@ -60,10 +67,12 @@ if (not defined $opt_api_key) {
         $NEW_API_KEY = $opt_api_key;
     }
 }
+
+## ===== IP =====
 my $NEW_IP = undef;
 if (not defined $opt_IP) {
-    say STDERR GREEN, "> FR24 Server IP", RESET;
-    $NEW_IP = getInfoFromUser("Provide IP address for FR24", $config->{"server"}->{"ip"});
+    say STDERR GREEN, "> FR24 Server IP ", RESET, $config->{"server"}->{"ip"} if defined $config->{"server"}->{"ip"};
+    $NEW_IP = getInfoFromUser("Provide IP address for FR24", $config->{"server"}->{"ip"}) if not defined $config->{"server"}->{"ip"};
 } else {
     if ($opt_IP eq 'default') {
         say STDERR YELLOW, "> Keeping default IP: ", $config->{"server"}->{"ip"}, RESET if $verbose;
@@ -74,19 +83,74 @@ if (not defined $opt_IP) {
     }
 }
 
+## ===== port =====
+
+my $old_port = $config->{"server"}->{"port"} if defined $config->{"server"}->{"port"};
+if (defined $old_port) {
+    # It was defined
+    if (defined $opt_port) {
+        say STDERR YELLOW, "> Setting port: ", $opt_port, RESET if $verbose;
+        $config->{"server"}->{"port"} = $opt_port;
+    } else {
+        say STDERR GREEN, "> Port ", RESET, $old_port if $verbose;
+    }
+} else {
+    # It was not defined
+    if (defined $opt_port) {
+        say STDERR YELLOW, "> Setting port: ", $opt_port, RESET if $verbose;
+        $config->{"server"}->{"port"} = $opt_port;
+    }
+}
+## ===== USERS =====
+say STDERR GREEN , "> Authorized users", RESET if $verbose;
+for my $u (keys %{$config->{"users"}}) {
+    say STDERR YELLOW, "> User ", RESET, $u, " is ", $config->{"users"}->{$u} ? "authorized" : "NOT authorized" if $verbose;
+    
+}
+for my $u (@opt_users) {
+    # Check integer
+    if ($u =~ /^\d+$/) {
+        say STDERR GREEN, "> Adding user ", RESET, $u if $verbose;
+        $config->{"users"}->{"$u"} = 1;
+    } else {
+        say STDERR RED, "> Invalid user ", RESET, $u;
+    }
+}
+for my $u (@opt_banned_users) {
+    # Check integer
+    if ($u =~ /^\d+$/) {
+        say STDERR GREEN, "> Adding user ", RESET, $u if $verbose;
+        $config->{"users"}->{"$u"} = 0;
+    } else {
+        say STDERR RED, "> Invalid user ", RESET, $u;
+    }
+}
+# If there are AUTHORIZED users, set "everyone" to 0
+my $auth_count = 0;
+for my $u (keys %{$config->{"users"}}) {
+    next if $u eq "everyone";
+    $auth_count++ if $config->{"users"}->{$u};
+}
+if ($auth_count > 0) {
+    say STDERR YELLOW, "> Setting everyone to NOT authorized", RESET if $verbose;
+    $config->{"users"}->{"everyone"} = 0;
+}
 $config->{"telegram"}->{"apikey"} = $NEW_API_KEY if defined $NEW_API_KEY;
 $config->{"server"}->{"ip"} = $NEW_IP if defined $NEW_IP;
 
-if ($verbose) {
-    my $json = JSON::PP->new->utf8->pretty->canonical;
-    my $json_text = $json->encode($config);
-    say STDERR "------- New Config File -------\n", $json_text;
-}
+
 
 
 if ($opt_no_write) {
-    say Dumper $config;
+    # Print as json
+    my $json = JSON::PP->new->utf8->pretty->canonical;
+    my $json_text = $json->encode($config);
+    say $json_text;
     exit 0;
+} elsif  ($verbose) {
+    my $json = JSON::PP->new->utf8->pretty->canonical;
+    my $json_text = $json->encode($config);
+    say STDERR "------- New Config File -------\n", $json_text;
 }
 eval {
     FR24::Bot::saveconfig($config_file, $config);
@@ -104,6 +168,16 @@ if ($@) {
 sub usage {
     say "Usage: $0 [-a|--api-key API_KEY] [-c|--config CONFIG_FILE] [-h|--help] [-v|--version]";
     say "Default config file: $ENV{HOME}/.config/fr24-bot.ini";
+    say "\nOptions:";
+    say " -c, --config CONFIG_FILE Set config file";
+    say " -a, --api-key API_KEY    Set API key for Telegram";
+    say " -i, --ip IP              Set IP address for FR24";
+    say " -p, --port PORT          Set port for FR24 (default: 8754)";
+    say " -u, --users USER1        Authorize user ID (multiple allowed)";
+    say " -b, --ban USER1          Ban user ID (multiple allowed)";
+    say "     --no-write           Do not write config file";
+    say "     --verbose            Verbose output";
+    say "     --help               This help message";
 }
 
 sub getInfoFromUser {
@@ -143,6 +217,21 @@ __END__
 The C<config-fr24-bot> script is used to configure the FR24-Bot by modifying the configuration file. 
 It provides command-line options to change the API key and FR24 server IP address.
 
+Example configuration:
+
+  [telegram]
+  apikey=7908487915:AEEQFftvQtEbavBGcB81iF1cF2koliWFxJE
+  
+  [server]
+  ip=localhost
+  port=8754
+  
+  [users]
+  # Authorized users (1=authorized, 0=not authorized).
+  # Add "everyone=1" to allow everyone to use the bot, exept users set to 0
+  0912401240=1
+  1827498712=0
+
 =head1 OPTIONS
 
 The following options are available:
@@ -160,6 +249,18 @@ You can specify C<default> to keep the current API key (if any).
 Sets the FR24 server IP address. If not provided, the script will use an B<interactive> prompt for the IP address.
 
 You can specify C<default> to keep the current API key (if any).
+
+=item B<-u, --users USER1>
+
+Authorizes the user ID C<USER1>. Multiple users can be authorized by specifying this option multiple times.
+The Telegram ID must be an integer.
+
+B<NOTE>: If no users are present in the config file, everyone is allowed to use the bot.
+
+=item B<-b, --ban USER1>
+
+Bans the user ID C<USER1>. Multiple users can be banned by specifying this option multiple times.
+The Telegram ID must be an integer.
 
 =item B<-c, --config CONFIG_FILE>
 
