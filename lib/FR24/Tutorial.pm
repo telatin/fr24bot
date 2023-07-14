@@ -5,7 +5,7 @@ use strict;
 use warnings;
 
 
-=head1 DESCRIPTION
+=head1 How to get started with FR24::Bot
 
 This modules comes with some utilities to run a B<Telegram Bot> 
 that interacts with flight data your the B<Flightradar24 antenna>.
@@ -49,12 +49,89 @@ To create it you can run the following command:
 If you don't specify the C<-a> option or the C<-i> options,
 the script will ask you to provide them interactively.
 
+=head3 Users
+
+The C<users> section contains a list of authorized users. If C<everyone=1> is present,
+all users will be able to query the bot. Otherwise only users with C<USER_ID=1> will be
+able to use the bot. In the future higher values will be used to give different permissions.
 
 =head2 Running the Bot
 
 The main program is C<fr24bot>. You can run it with the following options:
 
     fr24-bot [-a API_KEY] [-i IP] [-p PORT] [-c CONFIG_FILE] [-v] [-d]
+
+Type C</help> in the bot to get a list of available commands, for example C</tot> will return
+the total number of flights detected.
+
+=head1 Developer's notes
+
+=head2 Data strcuture for the bot 
+
+    bless( {
+                    'total' => 4,
+                    'users' => {},
+                    'uploaded' => 3,
+                    'last_url' => 'http://localhost:8754/flights.json?time=1689326300000',
+                    'name' => 'fr24-bot',
+                    'callsigns' => {
+                                    'KLM000' => '485e30',
+                                    'RYR000' => '4d21ee',
+                                    'KLM100' => '485789',
+                                    },
+                    'apikey' => '6208587905:AAEQFfvvQtHbvvBTcB78iE8wO2zuapWFxJE',
+                    'ip' => 'localhost',
+                    'test_mode' => 1,
+                    'refresh' => 10000,
+                    'port' => '8754',
+                    'config' => {
+                                'users' => {
+                                                'everyone' => '0',
+                                                '6347455858' => '1'
+                                            },
+                                'server' => {
+                                                'ip' => 'localhost',
+                                                'port' => '8754'
+                                            },
+                                'telegram' => {
+                                                'apikey' => '6208587905:AAEQFfvvQtHbvvBTcB78iE8wO2zuapWFxJE'
+                                                }
+                                },
+                    'content' => '{}',
+                    'flights_url' => 'http://localhost:8754/flights.json',
+                    'localip' => undef,
+                    'flights' => {
+                                    '3c5eee' => {
+                                                'id' => '3c5eee',
+                                                'long' => 0,
+                                                'callsign' => '',
+                                                'lat' => 0,
+                                                'alt' => 11775
+                                                },
+                                    '485789' => {
+                                                'long' => '0.9666',
+                                                'id' => '485789',
+                                                'callsign' => 'KLM100',
+                                                'alt' => 38275,
+                                                'lat' => '51.94'
+                                                },
+                                    '485e30' => {
+                                                'alt' => 34850,
+                                                'lat' => '53.01',
+                                                'id' => '485e30',
+                                                'long' => '0.8713',
+                                                'callsign' => 'KLM000'
+                                                },
+                                    '4d21ee' => {
+                                                'lat' => '51.99',
+                                                'alt' => 25875,
+                                                'callsign' => 'RYR000',
+                                                'id' => '4d21ee',
+                                                'long' => '1.463'
+                                                },
+                                },
+                    'last_updated' => '1689326300000'
+                }, 'FR24::Bot' );
 
 
 =cut

@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-#ABSTRACT: A bot for Flightradar24 on a Raspberry Pi
+#ABSTRACT: A Telegram bot for Flightradar24 antennas
 #PODNAME: fr24bot
 
 use 5.018;

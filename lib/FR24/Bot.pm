@@ -1,20 +1,19 @@
 #ABSTRACT: Subroutines for FR24-Bot
+package FR24::Bot;
 use v5.12;
 use warnings;
-package FR24::Bot;
-
-our $VERSION = "0.0.1";
 use JSON::PP;
+use Data::Dumper;
 use Exporter qw(import);
 use HTTP::Tiny;
 use File::Which;
 use FR24::Utils;
 use Carp qw(confess);
-
+our $VERSION = "0.0.1";
 my $UPDATE_MS = 10 * 1000;
 # Export version
 our @EXPORT = qw($VERSION);
-our @EXPORT_OK = qw(loadconfig saveconfig url_exists authorized parse_flights systeminfo);
+our @EXPORT_OK = qw(new get);
  
 
 sub new {
@@ -67,7 +66,9 @@ sub new {
     $self->{total} = 0;
     $self->{uploaded} = 0;
     $self->{flights} = {};
+    $self->{callsigns} = {};
     $self->{flights_url} = "http://" . $self->{ip} . ":" . $self->{port} . "/flights.json";
+
     $self->{users} = {};
     $self->{last_updated} = 0;
     $self->{last_url} = undef;
@@ -102,6 +103,7 @@ sub update {
 
     # Update the object properties
     $self->{flights} = $data->{data};
+    $self->{callsigns} = $data->{callsigns};
     $self->{total} = $data->{total};
     $self->{uploaded} = $data->{uploaded};
 
@@ -111,7 +113,14 @@ sub update {
 
 
 # Write a $self->update() method to update the object
-
+sub getflight {
+    my ($self, $callsign) = @_; 
+    if (not defined $self->{'callsigns'}->{$callsign}) {
+        return 0;
+    }
+   
+    return $self->{'flights'}->{ $self->{'callsigns'}->{$callsign} };
+}
 
 sub _curl {
     my $url = shift;

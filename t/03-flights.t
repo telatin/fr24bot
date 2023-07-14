@@ -15,15 +15,18 @@ ok($flights->{"status"} eq "OK", "Got status: OK " . $flights->{"status"});
 ok($flights->{"total"} == 28, "Got expected flights: 28==" . $flights->{"total"});
 
 # Specific flight?
-my $id = "3c6708";
-my $callsign = "DLH000";
-my $lat = 53.21;
-my $long = 0.913;
+#"485789",51.94,0.9666,64.76496,38275,539,"6250",0,"","",1689143721,"","","",false,-1216,"KLM100"
+my $id = "485789";
+my $callsign = "KLM100";
+my $lat = 51.94;
+my $long = 0.9666;
 my $flight = $flights->{"data"}->{$id};
 ok($flight, "Got flight $id");
 ok($flight->{"callsign"} eq $callsign, "Got expected callsign: $callsign==" . $flight->{"callsign"});
 ok($flight->{"lat"} eq $lat, "Got expected latitude: $lat=" . $flight->{"lat"});
 ok($flight->{"long"} eq $long, "Got expected longitude: $long=" . $flight->{"long"});
+
+
 done_testing();
 
 __DATA__

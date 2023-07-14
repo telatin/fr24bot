@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
-#ABSTRACT: Test the configuration and FR24 API
-#PODNAME: fr24test
+#ABSTRACT: Developer's utility
+#PODNAME: fr24check
 
 use 5.018;
 use utf8;
@@ -104,6 +104,9 @@ if (defined $ARGV[0]) {
     say STDERR "User query: ", $ARGV[0];
     say STDERR Dumper $bot->{flights};
 }
+
+# Print $bot as JSON pretty
+say Dumper $bot;
 
 __END__
 

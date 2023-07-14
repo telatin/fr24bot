@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-#ABSTRACT: Configuration for FR24-Bot
+#ABSTRACT: Configuration for FR24-Bot, create update or read your configuration file
 #PODNAME: config-fr24-bot
 
 use v5.24;
