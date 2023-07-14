@@ -4,9 +4,9 @@ use Test::More;
 use FindBin qw($RealBin);
 use File::Temp qw/ :POSIX /;
 use Data::Dumper;
-use_ok('FR24::Bot');
+use_ok('FR24::Utils');
 
-my $flights = FR24::Bot::parse_flights('', 1);
+my $flights = FR24::Utils::parse_flights('', 1);
 
 # Function is working (will return a valid structure even if empty)
 ok($flights, "Function is working");
@@ -16,7 +16,7 @@ ok($flights->{"total"} == 28, "Got expected flights: 28==" . $flights->{"total"}
 
 # Specific flight?
 my $id = "3c6708";
-my $callsign = "DLH481";
+my $callsign = "DLH000";
 my $lat = 53.21;
 my $long = 0.913;
 my $flight = $flights->{"data"}->{$id};

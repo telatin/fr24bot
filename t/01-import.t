@@ -4,4 +4,5 @@ use Test::More;
 
 
 use_ok('FR24::Bot');
+use_ok('FR24::Utils');
 done_testing();

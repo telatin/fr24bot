@@ -14,21 +14,25 @@ use Data::Dumper;
 use Term::ANSIColor;
 use JSON::PP;
 use Getopt::Long;
+
 use FR24::Bot;
+use FR24::Utils;
 our $conf;
 
 my $opt_verbose;
 my $opt_debug;
 my $opt_token;
 my $opt_ip;
+my $opt_test;
 my $opt_config = "$ENV{HOME}/.config/fr24-bot.ini";
 GetOptions(
  'a|api-key=s' => \$opt_token,
  'i|ip=s'      => \$opt_ip,
  'c|config=s'  => \$opt_config,
- 'verbose'   => \$opt_verbose,
- 'debug'     => \$opt_debug,
- 'version'   => sub { say basename($0). " " . $FR24::Bot::VERSION; exit 0;},
+ 'verbose'     => \$opt_verbose,
+ 'debug'       => \$opt_debug,
+ 'test'        => \$opt_test,
+ 'version'     => sub { say basename($0). " " . $FR24::Utils::VERSION; exit 0;},
 );
 
 $opt_verbose = 1 if $opt_debug;
@@ -36,14 +40,14 @@ $opt_verbose = 1 if $opt_debug;
 # Load config
 if ( defined $opt_config and -e $opt_config ) {
     say STDERR "Reading config from $opt_config" if ($opt_verbose);
-    $conf = FR24::Bot::loadconfig($opt_config);
+    $conf = FR24::Utils::loadconfig($opt_config);
 
 } elsif ( -e "$ENV{HOME}/.config/fr24-bot.ini" ) {
   	say STDERR "Reading config from ~/.config/fr24-bot.ini" if ($opt_verbose);
-    $conf = FR24::Bot::loadconfig("$ENV{HOME}/.config/fr24-bot.ini");
+    $conf = FR24::Utils::loadconfig("$ENV{HOME}/.config/fr24-bot.ini");
 } elsif ( -e "$RealBin/.config/fr24-bot.ini" ) {
     say STDERR "Reading config from $RealBin/.config/fr24-bot.ini" if ($opt_verbose);
-    $conf = FR24::Bot::loadconfig("$RealBin/.config/fr24-bot.ini");
+    $conf = FR24::Utils::loadconfig("$RealBin/.config/fr24-bot.ini");
 }
  
 
@@ -68,36 +72,34 @@ $api->agent->can("inactivity_timeout") and $api->agent->inactivity_timeout(45);
 my $me = $api->getMe or die;
 my ( $offset, $updates ) = 0;
  
-
+my $bot = FR24::Bot->new(
+    -conf => $conf,
+    -name => "fr24-bot",
+    -test => $opt_test,
+);
 my $commands = {
 
-    # Example demonstrating the use of parameters in a command.
-    "say" => sub {
-        if ( defined $_[1] ) {
-            
-            join " ", splice @_, 1;
-        }
-        else {
-            "Usage: /say something";
-        }
 
-    },
-    "update" => sub {
-	my $raw = `$RealBin/update 2>&1`;
+
+    "about" => sub {
+        
+        my $self = shift;
+        say STDERR Dumper $self;
+        # Requires and argument
+        my $flight_id = shift;
+        my $message = "[$flight_id](https://www.flightradar24.com/$flight_id)";
+       
         +{
             method     => "sendMessage",
             parse_mode => "Markdown",
-            text       => $raw,
+            text       => $message,
         };
-
     },
-    "hello" => sub {
-
-        my $u = '' . $me->{result}{username};
-        
-        my $message = "Hello "
-          . shift->{from}{username}
-          . ",\n I am *FR24 Bot* [\@$u], your lab technician! How are you?";
+    "tot" => sub {
+        eval {
+            $bot->update();
+        };
+        my $message = "Total flights: *" . $bot->{total} . "*";
 
         +{
             method     => "sendMessage",
@@ -106,6 +108,28 @@ my $commands = {
         };
     },
 
+    "list" => sub {
+        eval {
+            $bot->update();
+        };
+        
+        my $message = "Seen flights: ";
+        my $untracked = 0;
+        for my $f (sort keys %{ $bot->{flights} }) {
+            if (length $bot->{flights}{$f}->{callsign} > 0) {
+                $message .= $bot->{flights}{$f}->{callsign} . ", " 
+            } else {
+                $untracked += 1;
+            }
+        }
+        $message .= " and $untracked untracked.";
+
+        +{
+            method     => "sendMessage",
+            parse_mode => "Markdown",
+            text       => $message,
+        };
+    },
     "temp" => sub {
         my $s = getStatus();
 

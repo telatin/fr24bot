@@ -13,18 +13,20 @@ use Term::ANSIColor qw(:constants);
 if (-e "$RealBin/../dist.ini") {
     use lib "$RealBin/../lib";
 }
-use FR24::Bot;
+use FR24::Utils;
 
 # Define version
-our $VERSION = $FR24::Bot::VERSION;
+our $VERSION = $FR24::Utils::VERSION;
 my $config_file = "$ENV{HOME}/.config/fr24-bot.ini";
 my $verbose = 0;
 my $opt_api_key;
 my $opt_IP;
-my $opt_port = 8754;
+my $fr24default_port = 8754;
+my $opt_port = $fr24default_port;
 my $opt_no_write = 0;
 my @opt_users;
 my @opt_banned_users;
+my $opt_quiet = 0;
 if (not GetOptions(
     'a|api-key=s'  => \$opt_api_key,    
     'i|ip=s'       => \$opt_IP,
@@ -33,6 +35,7 @@ if (not GetOptions(
     'u|users=s'    => \@opt_users,
     'b|ban=s'      => \@opt_banned_users,
     'no-write'     => \$opt_no_write,
+    'quiet'        => \$opt_quiet,
     'verbose'      => \$verbose,
     'version'      => sub { say basename($0). " " . $VERSION; exit 0;},
     'h|help'       => sub { usage(); exit 0;},
@@ -41,7 +44,7 @@ if (not GetOptions(
     die "ERROR: Invalid options\n";
 }
 
-my $config = FR24::Bot::loadconfig($config_file);
+my $config = FR24::Utils::loadconfig($config_file);
 
 # Config to json 
 
@@ -55,11 +58,13 @@ if ($verbose) {
 ## ===== API KEY =====
 my $NEW_API_KEY = undef;
 if (not defined $opt_api_key) {
-    say STDERR GREEN, "> API KEY ", RESET, $config->{"telegram"}->{"apikey"} if defined $config->{"telegram"}->{"apikey"};
+    # Not user supplied
+    say STDERR GREEN, "> API KEY ", RESET, $config->{"telegram"}->{"apikey"} if (defined $config->{"telegram"}->{"apikey"} and not $opt_quiet);
     $NEW_API_KEY = getInfoFromUser("Provide API key for Telegram", $config->{"telegram"}->{"apikey"}) if not defined $config->{"telegram"}->{"apikey"};
 } else {
-
+    # User supplied: overwrite or keep default
     if ($opt_api_key eq 'default') {
+        #TODO: If missing in config, force prompt
         say STDERR YELLOW, "> Keeping default API KEY: ", $config->{"telegram"}->{"apikey"}, RESET if $verbose;
         $NEW_API_KEY = $config->{"telegram"}->{"apikey"};
     } else {
@@ -71,7 +76,7 @@ if (not defined $opt_api_key) {
 ## ===== IP =====
 my $NEW_IP = undef;
 if (not defined $opt_IP) {
-    say STDERR GREEN, "> FR24 Server IP ", RESET, $config->{"server"}->{"ip"} if defined $config->{"server"}->{"ip"};
+    say STDERR GREEN, "> FR24 Server IP ", RESET, $config->{"server"}->{"ip"} if (defined $config->{"server"}->{"ip"} and not $opt_quiet);
     $NEW_IP = getInfoFromUser("Provide IP address for FR24", $config->{"server"}->{"ip"}) if not defined $config->{"server"}->{"ip"};
 } else {
     if ($opt_IP eq 'default') {
@@ -84,21 +89,24 @@ if (not defined $opt_IP) {
 }
 
 ## ===== port =====
-
-my $old_port = $config->{"server"}->{"port"} if defined $config->{"server"}->{"port"};
-if (defined $old_port) {
+ 
+my $config_port = $config->{"server"}->{"port"} if defined $config->{"server"}->{"port"};
+if (defined $config_port) {
     # It was defined
-    if (defined $opt_port) {
-        say STDERR YELLOW, "> Setting port: ", $opt_port, RESET if $verbose;
+    if (defined $opt_port and $opt_port != $fr24default_port) {
+        say STDERR YELLOW, "> Overwriting port: ", $opt_port, RESET if $verbose;
         $config->{"server"}->{"port"} = $opt_port;
     } else {
-        say STDERR GREEN, "> Port ", RESET, $old_port if $verbose;
+        say STDERR GREEN, "> Port ", RESET, $config_port if $verbose;
     }
 } else {
     # It was not defined
-    if (defined $opt_port) {
+    if (defined $opt_port and $opt_port != $fr24default_port) {
         say STDERR YELLOW, "> Setting port: ", $opt_port, RESET if $verbose;
         $config->{"server"}->{"port"} = $opt_port;
+    } else {
+        $config->{"server"}->{"port"} = getInfoFromUser("Provide port for FR24 server", $fr24default_port);
+
     }
 }
 ## ===== USERS =====
@@ -135,6 +143,7 @@ if ($auth_count > 0) {
     say STDERR YELLOW, "> Setting everyone to NOT authorized", RESET if $verbose;
     $config->{"users"}->{"everyone"} = 0;
 }
+# UPDATE CONFIG
 $config->{"telegram"}->{"apikey"} = $NEW_API_KEY if defined $NEW_API_KEY;
 $config->{"server"}->{"ip"} = $NEW_IP if defined $NEW_IP;
 
@@ -153,7 +162,7 @@ if ($opt_no_write) {
     say STDERR "------- New Config File -------\n", $json_text;
 }
 eval {
-    FR24::Bot::saveconfig($config_file, $config);
+    FR24::Utils::saveconfig($config_file, $config);
 };
 if ($@) {
     say STDERR "ERROR SAVING to $config_file:\n$@";
