@@ -14,21 +14,23 @@ use Data::Dumper;
 use Term::ANSIColor;
 use JSON::PP;
 use Getopt::Long;
-
+use Time::HiRes qw(gettimeofday tv_interval);
 use FR24::Bot;
 use FR24::Utils;
 our $conf;
-
+my $time_start = [gettimeofday];
 my $opt_verbose;
 my $opt_debug;
 my $opt_token;
 my $opt_ip;
 my $opt_test;
+my $opt_refresh = 30;
 my $opt_config = "$ENV{HOME}/.config/fr24-bot.ini";
 GetOptions(
  'a|api-key=s' => \$opt_token,
  'i|ip=s'      => \$opt_ip,
  'c|config=s'  => \$opt_config,
+ 'r|refresh=i' => \$opt_refresh,
  'verbose'     => \$opt_verbose,
  'debug'       => \$opt_debug,
  'test'        => \$opt_test,
@@ -76,6 +78,7 @@ my $bot = FR24::Bot->new(
     -conf => $conf,
     -name => "fr24-bot",
     -test => $opt_test,
+    -refresh => $opt_refresh,
 );
 my $commands = {
 
@@ -192,9 +195,7 @@ deb("Debug=$opt_debug;Verbose=$opt_verbose;");
 my $clock_tick = 0;
 
 while (1) {
-    if ( $opt_verbose and $opt_debug ) {
-        print STDERR color('bold'), "<$clock_tick> \r";
-    }
+    my $time_cycle = [gettimeofday];
     $clock_tick++;
     $updates = $api->getUpdates(
         {
@@ -202,13 +203,18 @@ while (1) {
             $offset ? ( offset => $offset ) : ()
         }
     );
-
+    if ($opt_debug) {
+        my $time_now = [gettimeofday];
+        my $since_start_diff = tv_interval($time_start, $time_now);
+        my $cycle_diff = tv_interval($time_cycle, $time_now);
+        printf STDERR "  [$clock_tick] Cycle %d: %0.3f s (since start: %0.3f s)\n", $clock_tick, $cycle_diff, $since_start_diff;
+    }
     unless ( $updates and ref $updates eq "HASH" and $updates->{ok} ) {
         warn "WARNING: getUpdates returned a false value - trying again...";
         next;
     }
     for my $u ( @{ $updates->{result} } ) {
-
+        deb("  for u in updates: $u->{update_id}");
 
         if ($opt_verbose) {
             print STDERR color('bold magenta'), "== REQUEST ==", color('reset'),
@@ -216,7 +222,21 @@ while (1) {
             print STDERR color('magenta'),  Dumper $u;
             print STDERR color('reset'), "\n";
         }
-
+        # Sender iD
+        my $from_id = $u->{message}{from}{id};
+        if (FR24::Utils::authorized($conf, $from_id)) {
+            print STDERR color('bold green'), "AUTHORIZED\n", color('reset');
+        } else {
+            $api->sendMessage(
+                {
+                    chat_id => $u->{message}{chat}{id},
+                    text => "Hello! This is a private bot. You are not authorized to use it.",
+                }
+            );
+            print STDERR color('bold red'), "UNAUTHORIZED\n", color('reset');
+            print "ACCESS_ATTEMPT: $from_id\n";
+            next;
+        }
         $offset = $u->{update_id} + 1 if $u->{update_id} >= $offset;
 
         if ( my $text = $u->{message}{text} ) {    

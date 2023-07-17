@@ -9,7 +9,7 @@ use HTTP::Tiny;
 use File::Which;
 use FR24::Utils;
 use Carp qw(confess);
-our $VERSION = "0.0.1";
+our $VERSION = "0.0.3";
 my $UPDATE_MS = 10 * 1000;
 # Export version
 our @EXPORT = qw($VERSION);
@@ -41,7 +41,7 @@ sub new {
                 $refresh = 1000 * $data{$i};
             } elsif ($i =~ /^-test$/i) {
                 # Receive seconds, convert to milliseconds
-                $test_mode = 1;
+                $test_mode = 1 if $data{$i};
             } else {
                 confess "ERROR FR24::Bot: Unknown parameter $i\n";
             }
